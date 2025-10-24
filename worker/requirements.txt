@@ -1,0 +1,3 @@
+# Same as backend since worker imports from backend
+-r ../backend/requirements.txt
+

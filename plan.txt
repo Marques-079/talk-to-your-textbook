@@ -1,0 +1,470 @@
+Frontend (Vercel)
+
+Next.js (JS) + NextAuth (Credentials) with Postgres.
+
+PDF.js viewer with programmatic scrollTo(page) and text‐layer highlight by (char_start, char_end).
+
+SSE proxy (Node runtime only, not Edge) for /api/ask.
+
+Uploads: direct-to-MinIO via /presign to avoid routing large PDFs through Vercel.
+
+Feature flags in .env to toggle “BM25”, “reranker”, “figures”.
+
+Backend (local, Docker Compose)
+
+FastAPI (REST + SSE), RQ/Redis worker.
+
+Postgres (users, docs, chunks, figures, chats, messages, citations).
+
+MinIO (PDFs, figure crops).
+
+FAISS (vectors, per user/doc) + Meilisearch (BM25) when enabled.
+
+Model runtimes (kept under 15 GB):
+
+Always-on: BGE-M3 (int8), bge-reranker-base (int8), CLIP ViT-L/14 (FP16), PaddleOCR lite, YOLOv8n-doclayout.
+
+Ingest-only (load/unload): PaddleOCR server, Nougat-base, PP-Structure, DePlot (ViT-B/T5-base).
+
+(Optional, rare) chart-aware VLM 7B Q4 as an ingest fallback for ambiguous plots (load briefly, unload).
+
+Generation: OpenAI GPT-4o mini only.
+
+Security & connectivity
+
+Cloudflare Tunnel exposes https://api.local.yourname.dev to Vercel and your devices.
+
+HMAC on all FE→API requests (X-Timestamp, X-Signature) + strict CORS.
+
+Per-user scoping on every query (document namespace, vector deletion safety)
+
+Model loadout (with realistic RAM)
+
+Always-on (Q&A runtime ~3–4 GB)
+
+Text embeddings: BGE-M3 (int8) ~0.9 GB
+
+Cross-encoder reranker: bge-reranker-base (int8) ~0.25–0.5 GB
+
+Figure/graph embeddings (for retrieval only): CLIP ViT-L/14 (FP16) ~1.0–1.2 GB
+
+OCR (fallback + in-figure labels): PaddleOCR PP-OCRv3 lite det+rec ~0.1 GB
+
+Layout blocks: YOLOv8n-doclayout / DocLayout-YOLO-small ~0.04–0.1 GB
+
+Ingest-only add-ons (spin up, then unload)
+
+Heavier OCR for gnarly scans: PaddleOCR server rec +0.5–0.8 GB
+
+Math/LaTeX extraction (born-digital pages): Nougat-base +0.7–1.2 GB
+
+Tables/charts structure: PaddleOCR PP-Structure +0.2–0.4 GB
+
+Chart/graph reasoning (plot → textual schema/caption):
+
+Primary (light, recommended): DePlot (ViT-B/16 + T5-base) +~1.5–2.5 GB
+
+Backup (only when low confidence): Chart-aware VLM 7B (Q4) (e.g., DocOwl / ChartVLM-7B class) +~6–8 GB (ephemeral)
+
+Peak without the backup VLM: ~6–8 GB.
+Peak with backup VLM temporarily loaded: ≤14–15 GB. Then unload back to ~3–4 GB for Q&A.
+
+Product scope (unchanged)
+
+Local web app; left = chat, right = PDF viewer; click citation → scroll/highlight.
+
+Users sign up/sign in; upload docs; create/delete chats; deleting a doc GC’s vectors/blobs/metadata.
+
+Answers concise; every sentence cites [p. N] or [Fig. N, p. N]; GPT-4o-mini writes the answer.
+
+High-level architecture (local-first)
+
+Single host (Docker Compose):
+
+web (Next.js; served by backend)
+
+api (FastAPI + SSE)
+
+worker (RQ/Redis) for ingest/OCR/embeddings/graph parsing
+
+db (Postgres)
+
+objstore (MinIO S3-compatible)
+
+search (FAISS for vectors; optional Meilisearch/Tantivy for BM25)
+
+ollama (only if you choose to test a local VLM briefly at ingest)
+
+tunnel (Cloudflare) optional for remote access
+
+Migration prep: keep adapters for Storage (MinIO↔S3), Vector (FAISS↔Qdrant), Search (Meili↔OpenSearch), LLM (OpenAI↔Bedrock/SageMaker). Same API contracts.
+
+Ingestion pipeline (figure-aware & chart-centric)
+1) PDF → text, pages, geometry
+
+PyMuPDF (born-digital) → text + page/char offsets.
+
+PaddleOCR lite fallback per page; switch to server only when quality drops.
+
+Nougat-base on digital pages with equations (store LaTeX + locations).
+
+2) Page layout & figure extraction
+
+YOLOv8n-doclayout (or DocLayout-YOLO-small) to segment text/figure/table regions.
+
+pdffigures2 to pair figure↔caption (bbox for each figure).
+
+Neighbor text: capture ±2 paragraphs above, +1 below by geometry.
+
+3) Graph/plot understanding (not object ID)
+
+In-figure OCR labels (axes titles, units, tick labels, legend text): PaddleOCR lite on the cropped figure.
+
+DePlot (ViT-B + T5-base) to produce a structured chart schema:
+
+x_axis.name, x_axis.units, y_axis.name, y_axis.units, series[] {label, trend keywords}, key_points (e.g., “yield point”, “UTS”).
+
+Also store a short neutral caption (e.g., “Stress–strain curve for cold-worked steel; linear elastic region up to ~0.2% strain”).
+
+Confidence gating: if DePlot confidence/coverage low and the figure is central (caption/neighbor text has plot verbs: “increases,” “slope,” “elastic region,” “yield”), briefly call Chart-aware VLM 7B (Q4) to refine the schema/caption, then unload.
+
+This step links graphs to meaning by textual schema + OCR tokens + nearby prose, not by classifying the picture.
+
+4) Chunking & filtering
+
+Paragraph-centric chunks (~450–700 tokens, ~80-token overlap).
+
+Exercise filter: drop “Exercises/Problems/Review/Answers” sections unless user opts in.
+
+Store metadata for UI: (page, heading_path, char_start, char_end, figure_num, bbox).
+
+5) Indexing
+
+Dense vectors (text): BGE-M3 on chunks + captions + neighbor text + in-figure OCR tokens + DePlot schema text → FAISS HNSW.
+
+Figure vectors (image): CLIP ViT-L/14 on figure crops for retrieval-time tie-breaking.
+
+Lexical (recommended): Meilisearch BM25 indexing:
+
+Raw chunk text
+
+Figure caption + neighbor text
+
+In-figure OCR tokens (axes, legend)
+
+DePlot schema fields (axis names, units, series labels)
+
+Near-duplicate control: pHash clusters for edition variants.
+
+Query pipeline (local except final LLM)
+1) Classify intent
+
+Rule-based: figure|diagram|graph|table|axis|slope|modulus|yield|strain|stress|curve → figure-aware mode.
+
+2) Multi-query expansion
+
+2–4 variants (base, synonyms, heading-biased, with/without symbols); domain lexicon (e.g., Young’s modulus, 0.2% offset, ultimate tensile strength).
+
+3) Hybrid retrieval
+
+Dense: FAISS over chunks + captions + neighbor text + OCR tokens + schema.
+
+Lexical: BM25 over same fields (plus equation labels if found by Nougat).
+
+Fuse scores (e.g., 0.55 dense + 0.45 BM25) → top-40.
+
+4) Rerank & figure disambiguation
+
+bge-reranker-base (int8) → top 8–12 candidates.
+
+If figure-heavy and borderline:
+
+Pull top-K figure crops referenced by those candidates and re-score with CLIP cosine (ensure the right curve wins).
+
+MMR diversity so the final context covers multiple relevant spots, not duplicates.
+
+5) Evidence pack
+
+≤~2200 tokens:
+
+Brief section headers
+
+Quoted spans from text
+
+Figure capsule: caption + 1–2 neighbor sentences + schema highlights (axis names/units/series)
+
+Carry structured citations: [p. N], [Fig. N, p. N], plus (char_start, char_end) and bbox.
+
+6) Generation & grounding
+
+LLM: OpenAI GPT-4o mini only.
+
+System rule: “2–6 sentences; every factual sentence cites [p. N] / [Fig. N, p. N]; if unsupported, say ‘Not found in the provided pages.’”
+
+Post-checks: sentence-level citation coverage + verify cited pages/figs exist in the pack; one retry with “ensure citation” nudge if needed.
+
+Frontend / Backend / Data (same shape, chart-aware fields added)
+
+Frontend (Next.js, served by FastAPI)
+
+Chat left; PDF.js viewer right (citation click → scrollTo(page) + highlight char range; figure citation → draw bbox overlay).
+
+Auth: NextAuth (Credentials) → Postgres (Argon2/bcrypt).
+
+Uploads via presigned PUT to MinIO; then call /ingest.
+
+SSE streaming for answers; chat/doc delete controls.
+
+Backend (FastAPI + worker)
+
+FastAPI: REST + SSE; per-user scoping.
+
+Worker (RQ): OCR, layout, DePlot, CLIP, embeddings, indexing, pHash cluster, Nougat/PP-Structure when needed.
+
+Postgres: users/docs/pages/chunks/figures(schema_json)/chats/messages/citations.
+
+MinIO: PDFs, figure crops, thumbnails, logs.
+
+Search: FAISS (vectors), Meilisearch (BM25).
+
+Data model deltas
+
+figures(..., caption, bbox, phash, clip_vec_id, schema_json) where schema_json holds axes, units, series, key_points, confidence.
+
+BM25 fields include schema tokens and in-figure OCR tokens to strengthen text→figure association.
+
+Runtime profiles (so you stay under 15 GB)
+
+Q&A (typical): ~3–4 GB
+(BGE-M3 int8 + reranker int8 + CLIP + PaddleOCR lite + layout + FAISS/Meili)
+
+Ingest (hard book, no backup VLM): ~6–8 GB
+(+ Paddle server + Nougat + PP-Structure)
+
+Ingest (worst case, briefly with backup VLM 7B Q4): ~13–15 GB
+(Load VLM only for low-confidence plots → caption/schema → unload)
+
+Milestones (build order)
+
+Shell & auth: Docker Compose; FastAPI + Next.js; Postgres + MinIO; NextAuth (Credentials).
+
+Uploads & pages: presigned PUT; page map stored.
+
+Layout & figures: YOLO-layout + pdffigures2 → crops + captions + neighbors.
+
+Graph semantics: PaddleOCR on crops + DePlot → schema_json; store pHash.
+
+Embeddings & indexes: BGE-M3 → FAISS; Meilisearch ingest (chunks + captions + neighbors + OCR + schema).
+
+Ask (hybrid): dense+BM25 → rerank → CLIP tie-break → evidence → GPT-4o-mini → citations.
+
+Viewer polish: scroll/highlight text; draw figure bbox on cited page.
+
+CRUD & GC: chats/doc delete with full cleanup (vectors/blobs/rows).
+
+Hardening: rate-limits, retries, ingest status, audit logs.
+
+
+
+
+0) Repo + contracts first
+
+Do
+
+Make a mono-repo: frontend/, backend/, worker/, infra/.
+
+Write a short API contract (OpenAPI or markdown) that fixes:
+
+Endpoints: /auth/*, /presign, /ingest(+/status), /chats(CRUD), /ask (SSE).
+
+Core types: Document, Page, Chunk, Figure{bbox, caption, schema_json}, Citation{page, fig?, char_range}.
+
+SSE event format ({type, content, citations}).
+
+Decide IDs (UUIDv4) and auth header (Bearer JWT).
+
+Add 12-factor env layout and .env.example.
+
+Done when ✅: Contract file exists; both FE & BE read types from it; you won’t rename routes later.
+
+1) Local infra skeleton (Docker Compose)
+
+Do
+
+Bring up: FastAPI, Postgres, Redis, MinIO, (Meilisearch optional now), Cloudflare Tunnel (optional), FE static host (or dev server).
+
+Wire FastAPI healthcheck /healthz.
+
+Add a simple storage adapter (StorageService) for MinIO (S3-compatible).
+
+Done when ✅: docker compose up gives you FastAPI at http://localhost:8000 and MinIO console; healthcheck is green.
+
+2) Auth + sessions (practice goal)
+
+Do
+
+Frontend (Next.js): NextAuth Credentials (email/password) → Postgres (hash with Argon2/bcrypt).
+
+Backend: /auth/signup, /auth/signin, /auth/signout that NextAuth calls.
+
+Secure cookies/JWT; user table/migrations in Postgres.
+
+Basic “Library” page behind auth.
+
+Done when ✅: You can sign up, sign in, sign out; protected routes block unauth users.
+
+3) Upload & presign flow
+
+Do
+
+Backend: POST /presign → returns presigned PUT URL for MinIO.
+
+Frontend: upload PDF directly to MinIO; then call POST /ingest?doc_id=....
+
+Worker: accept a job, store a row in documents with status = 'queued'.
+
+/ingest/status?doc_id returns {queued|running|done|error}.
+
+Done when ✅: A large PDF uploads without touching Vercel/BE bandwidth; UI shows ingest status changing (can still be stubbed internally).
+
+4) Minimum viable ingest (text-only)
+
+Do
+
+Worker:
+
+Extract text per page with PyMuPDF (fallback to PaddleOCR lite only if page returns little text).
+
+Chunk paragraphs (~450–700 tokens, ~80 overlap).
+
+Embed with BGE-M3 (int8) and store vectors in FAISS (per user+doc collection).
+
+Save pages and chunks with (page, heading_path, char_start, char_end).
+
+Don’t include exercises yet; mark them later.
+
+Done when ✅: DB has pages & chunks; FAISS index exists; document status becomes done.
+
+5) Minimal “Ask” vertical slice
+
+Do
+
+Backend: /ask (SSE) pipeline:
+
+Retrieve top-k dense (FAISS) only.
+
+Build a tiny evidence pack (2–4 snippets; carry page + char ranges).
+
+Call OpenAI GPT-4o mini with the strict prompt (2–6 sentences; each sentence must cite [p. N]).
+
+Stream tokens over SSE.
+
+Frontend:
+
+Chat panel on the left; PDF.js on the right.
+
+Clicking a citation scrolls to page & highlights char_start→char_end.
+
+Done when ✅: You can ask “Define X” and get a short, cited answer that scrolls/highlights the page.
+
+6) Retrieval quality pass
+
+Do
+
+Add BM25 via Meilisearch and hybrid scoring (0.55 dense + 0.45 BM25).
+
+Add bge-reranker-base (int8) cross-encoder on top-40 → keep 8–12.
+
+Add MMR to diversify results.
+
+Add an exercise filter: skip sections titled Exercises|Problems|Review|Answers (config flag to include if desired).
+
+Done when ✅: Obvious definitional or concept questions consistently pull the correct section; fewer near-duplicate snippets.
+
+7) Page layout + figures (extraction only)
+
+Do
+
+Use YOLOv8n-doclayout (or DocLayout-YOLO small) to segment page blocks.
+
+Run pdffigures2 to pair figure ↔ caption; crop figure PNGs; store (bbox, caption, page, figure_num).
+
+Run PaddleOCR lite on each crop to get axes/legend/tick labels.
+
+Compute CLIP ViT-L/14 embeddings for each figure; compute pHash for dedup.
+
+Extend schema: figures(schema_json NULL for now).
+
+Done when ✅: Figures are in DB with crops, captions, OCR tokens, CLIP vecs, pHash; UI can overlay a bbox when you click [Fig. N, p. N].
+
+8) Chart/diagram semantics (no resident VLM)
+
+Do
+
+Add DePlot (ViT-B/16 + T5-base) as an ingest-only service:
+
+For each figure, generate schema_json (axis names/units, series labels, trend keywords, key points like yield/UTS).
+
+Produce a brief neutral caption; save confidence.
+
+If confidence is low and the caption/neighbor text suggests the plot is central, optionally spin up a chart-aware VLM 7B Q4 briefly to refine the schema, then unload.
+
+Done when ✅: A stress–strain curve figure yields a schema with axis names/units and keywords like “yield point,” “elastic region,” “UTS”.
+
+9) Figure-aware retrieval
+
+Do
+
+At ingest, index schema text + in-figure OCR tokens alongside captions & neighbor text:
+
+Dense: BGE-M3 → FAISS (chunks + captions + neighbors + OCR + schema).
+
+Lexical: Meili BM25 over all those fields.
+
+Query time:
+
+Classify figure-heavy intent via rules (figure|graph|slope|axis|modulus|yield|stress|strain|curve).
+
+Hybrid retrieve → bge-reranker.
+
+If borderline, bring in associated figure candidates and CLIP cosine tie-break.
+
+Evidence pack: include figure capsule (caption + 1–2 neighbor sentences + schema highlights).
+
+Done when ✅: Questions like “Where does plastic deformation begin?” retrieve the figure + paragraph that explains it, and the answer cites [Fig. N, p. N] and [p. N].
+
+10) Post-answer guards
+
+Do
+
+Add a citation coverage check (regex or small rule) ensuring each sentence has [p. N]/[Fig. N, p. N].
+
+Validate that cited pages/figures exist in the current evidence pack; on failure, regenerate once with a “ensure citations” nudge.
+
+Done when ✅: You never return citation-less sentences; broken citations are auto-fixed on one retry.
+
+11) Chat CRUD + delete + GC
+
+Do
+
+Create/delete chats (soft delete).
+
+Delete document endpoint triggers full GC: FAISS vectors, Meilisearch docs, MinIO blobs (PDF, crops), DB rows.
+
+Add per-user scoping to every query (don’t trust client-side IDs).
+
+Done when ✅: Deleting a doc actually frees vector files and blobs; the doc no longer appears in search or chat lists.
+
+12) Hardening + polish
+
+Do
+
+Add HMAC signing on all FE→BE requests (X-Timestamp, X-Signature) and strict CORS.
+
+Add rate limits (token bucket per user), basic audits, and error telemetry.
+
+Limit worker concurrency to keep RAM < 15 GB during ingest; log model memory spikes.
+
+Optional Cloudflare Tunnel to use the app from other devices while everything runs locally.
+
+Done when ✅: Abuse is limited, logs are useful, and your Mac stays responsive during heavy ingest.
