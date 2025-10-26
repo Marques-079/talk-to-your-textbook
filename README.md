@@ -1,3 +1,4 @@
+# DISCLAIMER : This code was generated HEAVILY with Cursor 
 # Talk to Your Textbook
 
 A figure-aware, citation-grounded Q&A system for STEM textbooks. Ask questions in natural language and get precise answers with clickable citations.
