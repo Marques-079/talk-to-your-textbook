@@ -1,0 +1,19 @@
+
+CRUDE FUNCTIONALITY: 
+Ill also need a login system with hooked database. 
+Need to make a login page so users can sign in 
+And a front end UI which has chat on the leftside and the uploaded doc on right side. 
+
+Users can open a new chat and upload a document which is then vectorised in prep for RAG. They can also delete chats (free up storage on our end)
+On chat we return the relevant answer from our pipeline AND also offer the options to scroll to souce the reference page side of UI 
+
+Front end : Vercel, JS
+Back end : Python 
+
+Workflow : 
+0) Users can make an account sign up (hooked to database) {i want to practice this}
+1) Digest the textbook using Vision Transformers and PDF to text scanners 
+2) Convert to FAISS RAG vectors and store somewhere 
+3) Users can querery the textbook -> RAG pulls relevant -> Call 4o-mini over the segements -> Return answer + reference on textbook side bar 
+
+
