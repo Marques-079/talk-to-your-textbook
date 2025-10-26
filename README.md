@@ -1,4 +1,4 @@
-### DISCLAIMER : This code was gen HEAVILY with Cursor 
+### DISCLAIMER : Coded with help from Cursor 
 # Talk to Your Textbook 🤓📚
 
 ## ✨ UI Preview
