@@ -3,6 +3,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { api, Chat, MessageWithCitations, Document } from '@/lib/api';
 import PDFViewer from '@/components/PDFViewer';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function ChatPage() {
   const { data: session, status } = useSession();
@@ -27,7 +28,8 @@ export default function ChatPage() {
       loadDocument();
       loadChats();
     }
-  }, [status, documentId, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, documentId]);
 
   const loadDocument = async () => {
     try {
@@ -48,7 +50,6 @@ export default function ChatPage() {
       const chatList = response.data.chats || response.data;
       setChats(chatList);
       
-      // Create or select first chat
       if (chatList.length === 0) {
         createNewChat();
       } else {
@@ -92,7 +93,6 @@ export default function ChatPage() {
     setIsAsking(true);
     setCurrentAnswer('');
 
-    // Add user message to UI
     const userMessage: MessageWithCitations = {
       message: {
         id: 'temp-user',
@@ -105,8 +105,7 @@ export default function ChatPage() {
     setMessages([...messages, userMessage]);
 
     try {
-      // SSE request
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ask`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -143,8 +142,13 @@ export default function ChatPage() {
               setCurrentAnswer(answer);
             } else if (data.type === 'citation') {
               citations.push(data.citation);
+              
+              // Auto-scroll only the first citation (top priority)
+              if (citations.length === 1 && pdfViewerRef.current) {
+                const firstCitation = data.citation;
+                pdfViewerRef.current.scrollToPage(firstCitation.page_number);
+              }
             } else if (data.type === 'done') {
-              // Add assistant message
               const assistantMessage: MessageWithCitations = {
                 message: {
                   id: data.message_id,
@@ -175,41 +179,42 @@ export default function ChatPage() {
   const handleCitationClick = (citation: any) => {
     if (pdfViewerRef.current) {
       pdfViewerRef.current.scrollToPage(citation.page_number);
-      if (citation.char_start !== undefined && citation.char_end !== undefined) {
-        pdfViewerRef.current.highlightText(citation.page_number, citation.char_start, citation.char_end);
-      }
     }
   };
 
   if (status === 'loading' || !document) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
         <div className="text-gray-600 dark:text-gray-400">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow px-4 py-3 flex items-center justify-between">
+      <header className="bg-white dark:bg-gray-800 shadow-sm px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/library')}
-            className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            className="text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
           >
             ← Back to Library
           </button>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {document.title}
-          </h1>
+          <div className="flex items-center">
+            <div className="w-6 h-6 bg-black dark:bg-white rounded-full mr-2"></div>
+            <h1 className="text-lg font-semibold text-black dark:text-white">
+              {document.title}
+            </h1>
+          </div>
         </div>
+        <ThemeToggle />
       </header>
 
       {/* Main content: Chat + PDF viewer */}
       <div className="flex-1 flex overflow-hidden">
         {/* Chat panel */}
-        <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+        <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 chat-messages">
             {messages.map((msg, idx) => (
@@ -217,22 +222,31 @@ export default function ChatPage() {
                 <div
                   className={`inline-block max-w-3/4 px-4 py-2 rounded-lg ${
                     msg.message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
+                      ? 'bg-black dark:bg-white text-white dark:text-black'
+                      : 'bg-gray-100 dark:bg-gray-700 text-black dark:text-white'
                   }`}
                 >
                   <div className="whitespace-pre-wrap">{msg.message.content}</div>
                   {msg.citations.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {msg.citations.map((cit, citIdx) => (
+                      {msg.citations.slice(0, 3).map((cit, citIdx) => (
                         <button
                           key={citIdx}
                           onClick={() => handleCitationClick(cit)}
-                          className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 rounded hover:bg-blue-200 dark:hover:bg-blue-800"
+                          className={`text-xs px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors ${
+                            citIdx === 0 
+                              ? 'bg-yellow-200 dark:bg-yellow-600 text-black dark:text-white font-semibold' 
+                              : 'bg-gray-200 dark:bg-gray-600 text-black dark:text-white'
+                          }`}
                         >
                           {cit.figure_num ? `Fig. ${cit.figure_num}, p. ${cit.page_number}` : `p. ${cit.page_number}`}
                         </button>
                       ))}
+                      {msg.citations.length > 3 && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          +{msg.citations.length - 3} more
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -242,7 +256,7 @@ export default function ChatPage() {
             {/* Current streaming answer */}
             {isAsking && currentAnswer && (
               <div className="text-left">
-                <div className="inline-block max-w-3/4 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                <div className="inline-block max-w-3/4 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-black dark:text-white">
                   <div className="whitespace-pre-wrap">{currentAnswer}</div>
                 </div>
               </div>
@@ -261,12 +275,12 @@ export default function ChatPage() {
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && askQuestion()}
                 placeholder="Ask a question..."
                 disabled={isAsking}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50"
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white bg-white dark:bg-gray-700 text-black dark:text-white disabled:opacity-50"
               />
               <button
                 onClick={askQuestion}
                 disabled={isAsking || !question.trim()}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:cursor-not-allowed"
+                className="px-6 py-2 bg-black dark:bg-white hover:bg-gray-800 dark:hover:bg-gray-200 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white dark:text-black font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white disabled:cursor-not-allowed transition-colors"
               >
                 {isAsking ? 'Asking...' : 'Ask'}
               </button>
@@ -287,4 +301,3 @@ export default function ChatPage() {
     </div>
   );
 }
-

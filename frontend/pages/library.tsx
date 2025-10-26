@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { api, Document } from '@/lib/api';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default function Library() {
   const { data: session, status } = useSession();
@@ -17,11 +18,11 @@ export default function Library() {
     } else if (status === 'authenticated') {
       loadDocuments();
     }
-  }, [status, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   // Poll for status updates when documents are processing
   useEffect(() => {
-    // Check if any documents are currently processing
     const hasProcessingDocs = documents.some(
       (doc) => doc.status === 'queued' || doc.status === 'running'
     );
@@ -30,13 +31,11 @@ export default function Library() {
       return;
     }
 
-    // Poll every 3 seconds
     const interval = setInterval(async () => {
       try {
         const response = await api.get('/documents');
         const latestDocs = response.data.documents || response.data;
         
-        // Only update if there are actual changes to avoid unnecessary re-renders
         setDocuments((prevDocs) => {
           const hasChanges = latestDocs.some((latestDoc: Document) => {
             const prevDoc = prevDocs.find((d) => d.id === latestDoc.id);
@@ -79,7 +78,6 @@ export default function Library() {
     setUploadProgress('Getting upload URL...');
 
     try {
-      // Get presigned URL
       const presignResponse = await api.get('/presign', {
         params: {
           filename: file.name,
@@ -89,7 +87,6 @@ export default function Library() {
 
       const { doc_id, upload_url } = presignResponse.data;
 
-      // Upload to MinIO
       setUploadProgress('Uploading PDF...');
       await fetch(upload_url, {
         method: 'PUT',
@@ -99,7 +96,6 @@ export default function Library() {
         },
       });
 
-      // Trigger ingestion
       setUploadProgress('Processing document...');
       await api.post('/ingest', null, {
         params: { doc_id },
@@ -136,27 +132,31 @@ export default function Library() {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
         <div className="text-gray-600 dark:text-gray-400">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow">
+      <header className="bg-white dark:bg-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            My Library
-          </h1>
+          <div className="flex items-center">
+            <div className="w-8 h-8 bg-black dark:bg-white rounded-full mr-3"></div>
+            <h1 className="text-2xl font-bold text-black dark:text-white">
+              My Library
+            </h1>
+          </div>
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {session?.user?.email}
             </span>
             <button
               onClick={() => signOut()}
-              className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              className="text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
             >
               Sign out
             </button>
@@ -168,45 +168,49 @@ export default function Library() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Upload section */}
         <div className="mb-8">
-          <label className="block">
-            <span className="sr-only">Choose PDF file</span>
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={handleFileUpload}
-              disabled={uploading}
-              className="block w-full text-sm text-gray-500 dark:text-gray-400
-                file:mr-4 file:py-2 file:px-4
-                file:rounded-md file:border-0
-                file:text-sm file:font-semibold
-                file:bg-blue-50 file:text-blue-700
-                dark:file:bg-blue-900 dark:file:text-blue-200
-                hover:file:bg-blue-100 dark:hover:file:bg-blue-800
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-          </label>
-          {uploadProgress && (
-            <p className="mt-2 text-sm text-blue-600 dark:text-blue-400">
-              {uploadProgress}
-            </p>
-          )}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+            <h2 className="text-lg font-semibold text-black dark:text-white mb-4">Upload Document</h2>
+            <label className="block">
+              <span className="sr-only">Choose PDF file</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleFileUpload}
+                disabled={uploading}
+                className="block w-full text-sm text-gray-500 dark:text-gray-400
+                  file:mr-4 file:py-2 file:px-4
+                  file:rounded-md file:border-0
+                  file:text-sm file:font-semibold
+                  file:bg-gray-100 dark:file:bg-gray-700 file:text-black dark:file:text-white
+                  hover:file:bg-gray-200 dark:hover:file:bg-gray-600
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </label>
+            {uploadProgress && (
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                {uploadProgress}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Documents grid */}
         {documents.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400">
-              No documents yet. Upload a PDF to get started!
-            </p>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
+              <p className="text-gray-500 dark:text-gray-400">
+                No documents yet. Upload a PDF to get started!
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 hover:shadow-lg transition-shadow"
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow"
               >
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2 truncate">
+                <h3 className="text-lg font-semibold text-black dark:text-white mb-2 truncate">
                   {doc.title}
                 </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
@@ -219,7 +223,7 @@ export default function Library() {
                 {/* Status badge */}
                 <div className="mb-4 transition-all duration-500">
                   {doc.status === 'done' && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 animate-fade-in">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                       Ready
                     </span>
                   )}
@@ -245,7 +249,7 @@ export default function Library() {
                   <button
                     onClick={() => openChat(doc.id)}
                     disabled={doc.status !== 'done'}
-                    className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:cursor-not-allowed transition-all duration-300"
+                    className="flex-1 py-2 px-4 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black dark:focus:ring-white disabled:cursor-not-allowed transition-all duration-300"
                   >
                     Open
                   </button>
@@ -264,4 +268,3 @@ export default function Library() {
     </div>
   );
 }
-

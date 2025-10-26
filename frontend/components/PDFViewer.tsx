@@ -14,23 +14,19 @@ interface PDFViewerProps {
 
 const PDFViewer = forwardRef(({ documentId, userId, filename }: PDFViewerProps, ref) => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
   const [loading, setLoading] = useState(true);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [scale, setScale] = useState(1.5);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<(HTMLCanvasElement | null)[]>([]);
 
   useImperativeHandle(ref, () => ({
     scrollToPage(pageNumber: number) {
-      if (pageNumber >= 1 && pageNumber <= numPages) {
-        setCurrentPage(pageNumber);
-      }
-    },
-    highlightText(pageNumber: number, charStart: number, charEnd: number) {
-      // For MVP, we'll just scroll to the page
-      // Full text highlighting requires text layer rendering
-      if (pageNumber >= 1 && pageNumber <= numPages) {
-        setCurrentPage(pageNumber);
+      if (pageNumber >= 1 && pageNumber <= numPages && pageRefs.current[pageNumber - 1]) {
+        pageRefs.current[pageNumber - 1]?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
       }
     },
   }));
@@ -40,30 +36,68 @@ const PDFViewer = forwardRef(({ documentId, userId, filename }: PDFViewerProps, 
   }, [documentId, userId, filename]);
 
   useEffect(() => {
-    if (pdfDoc && currentPage) {
-      renderPage(currentPage);
+    if (pdfDoc && numPages > 0) {
+      calculateScaleAndRender();
     }
-  }, [pdfDoc, currentPage]);
+  }, [pdfDoc, numPages]);
+
+  // Handle window resize to recalculate scale
+  useEffect(() => {
+    if (!pdfDoc) return;
+
+    const handleResize = () => {
+      calculateScaleAndRender();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [pdfDoc, numPages]);
+
+  const calculateScaleAndRender = async () => {
+    if (!pdfDoc || !containerRef.current) return;
+
+    try {
+      // Get the first page to calculate dimensions
+      const firstPage = await pdfDoc.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1 });
+      
+      // Calculate scale to fit container width with padding
+      const containerWidth = containerRef.current.clientWidth;
+      const padding = 32; // 16px on each side
+      const availableWidth = containerWidth - padding;
+      const calculatedScale = availableWidth / viewport.width;
+      
+      // Set the scale and render
+      setScale(calculatedScale);
+      
+      // Small delay to ensure scale is set before rendering
+      setTimeout(() => {
+        renderAllPages(calculatedScale);
+      }, 100);
+    } catch (error) {
+      console.error('Error calculating scale:', error);
+      renderAllPages(1.5); // Fallback to default scale
+    }
+  };
 
   const loadPDF = async () => {
     try {
       setLoading(true);
       
-      // Get PDF URL from backend
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-      const pdfUrl = `${API_URL}/documents/${documentId}/pdf`;
-      
-      // For MVP, we'll use the presigned URL approach
-      // In production, you'd add a GET endpoint that returns presigned download URL
       const objectKey = `${userId}/${documentId}/${filename}`;
       const minioUrl = `http://localhost:9000/textbook-pdfs/${objectKey}`;
+      
+      console.log('Loading PDF from:', minioUrl);
       
       const loadingTask = pdfjsLib.getDocument(minioUrl);
       const pdf = await loadingTask.promise;
       
+      console.log(`PDF loaded: ${pdf.numPages} pages`);
+      
       setPdfDoc(pdf);
       setNumPages(pdf.numPages);
-      setCurrentPage(1);
+      pageRefs.current = new Array(pdf.numPages);
       setLoading(false);
     } catch (error) {
       console.error('Error loading PDF:', error);
@@ -71,78 +105,68 @@ const PDFViewer = forwardRef(({ documentId, userId, filename }: PDFViewerProps, 
     }
   };
 
-  const renderPage = async (pageNum: number) => {
-    if (!pdfDoc || !canvasRef.current) return;
+  const renderAllPages = async (renderScale?: number) => {
+    if (!pdfDoc) return;
 
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 1.5 });
+    const scaleToUse = renderScale || scale;
 
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const canvas = pageRefs.current[pageNum - 1];
+      if (!canvas) continue;
 
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-      };
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale: scaleToUse, rotation: 0 });
 
-      await page.render(renderContext).promise;
-    } catch (error) {
-      console.error('Error rendering page:', error);
-    }
-  };
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+        
+        // Set canvas dimensions
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-  const goToPrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
+        // Fill with white background to prevent transparency issues
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
-  const goToNextPage = () => {
-    if (currentPage < numPages) {
-      setCurrentPage(currentPage + 1);
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        await page.render(renderContext).promise;
+        console.log(`Page ${pageNum} rendered at scale ${scaleToUse}`);
+      } catch (error) {
+        console.error(`Error rendering page ${pageNum}:`, error);
+      }
     }
   };
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="h-full flex items-center justify-center bg-gray-100 dark:bg-gray-900">
         <div className="text-gray-600 dark:text-gray-400">Loading PDF...</div>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className="h-full flex flex-col bg-gray-100 dark:bg-gray-900">
-      {/* Controls */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={goToPrevPage}
-            disabled={currentPage === 1}
-            className="px-3 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
-          >
-            Previous
-          </button>
-          <span className="text-sm text-gray-700 dark:text-gray-300">
-            Page {currentPage} of {numPages}
-          </span>
-          <button
-            onClick={goToNextPage}
-            disabled={currentPage === numPages}
-            className="px-3 py-1 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-
-      {/* PDF Canvas */}
-      <div className="flex-1 overflow-auto p-4 flex justify-center">
-        <canvas ref={canvasRef} className="shadow-lg" />
+    <div ref={containerRef} className="h-full overflow-auto bg-gray-100 dark:bg-gray-900">
+      {/* Scrollable container with all pages */}
+      <div className="flex flex-col items-center py-4 space-y-4 w-full">
+        {Array.from({ length: numPages }, (_, index) => (
+          <div key={index} className="relative shadow-lg w-full flex justify-center">
+            <canvas
+              ref={(el) => (pageRefs.current[index] = el)}
+              className="block max-w-full h-auto bg-white"
+              style={{ display: 'block' }}
+            />
+            {/* Page number badge */}
+            <div className="absolute top-2 right-2 bg-black dark:bg-white bg-opacity-70 dark:bg-opacity-70 text-white dark:text-black px-2 py-1 rounded text-xs font-medium">
+              Page {index + 1} of {numPages}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -151,4 +175,3 @@ const PDFViewer = forwardRef(({ documentId, userId, filename }: PDFViewerProps, 
 PDFViewer.displayName = 'PDFViewer';
 
 export default PDFViewer;
-
