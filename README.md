@@ -34,20 +34,6 @@ A quick look at the core screens — minimal, readable, and ready for dark or li
       </a>
     </td>
     <td width="50%">
-      <strong>Create Account</strong><br/>
-      <a href="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s2.2025.png">
-        <img alt="Create account screen" src="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s2.2025.png?raw=1" width="100%"/>
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <strong>Light mode — Chat Interaction</strong><br/>
-      <a href="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s3.2025.png">
-        <img alt="Light mode chat interaction" src="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s3.2025.png?raw=1" width="100%"/>
-      </a>
-    </td>
-    <td width="50%">
       <strong>Sign In</strong><br/>
       <a href="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s4.2025.png">
         <img alt="Sign in screen" src="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s4.2025.png?raw=1" width="100%"/>
@@ -55,10 +41,24 @@ A quick look at the core screens — minimal, readable, and ready for dark or li
     </td>
   </tr>
   <tr>
-    <td colspan="2">
+    <td width="50%">
       <strong>Upload Docs & Chats Library</strong><br/>
       <a href="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s5.2025.png">
         <img alt="Upload docs and access chats library" src="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s5.2025.png?raw=1" width="100%"/>
+      </a>
+    </td>
+    <td width="50%">
+      <strong>Create Account</strong><br/>
+      <a href="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s2.2025.png">
+        <img alt="Create account screen" src="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s2.2025.png?raw=1" width="100%"/>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <strong>Light mode — Chat Interaction</strong><br/>
+      <a href="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s3.2025.png">
+        <img alt="Light mode chat interaction" src="https://github.com/Marques-079/talk-to-your-textbook/blob/ff4062cee6ffbcd0016407684a7845f1e79559ce/cursors/s3.2025.png?raw=1" width="100%"/>
       </a>
     </td>
   </tr>
