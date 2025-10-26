@@ -46,8 +46,6 @@ open http://localhost:3000
 - ✅ **Citations**: Click `[p. N]` to navigate PDF viewer
 - ✅ **Multi-user**: Per-user document isolation
 
-[→ See What You've Built](./MVP_COMPLETE.md)
-
 ## 🗺️ Roadmap (Steps 6-12)
 
 | Step | Feature | Impact |
