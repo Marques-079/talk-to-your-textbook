@@ -1,5 +1,5 @@
 ### DISCLAIMER : This code was gen HEAVILY with Cursor 
-# Talk to Your Textbook
+# Talk to Your Textbook 🤓📚
 
 ## ✨ UI Preview
 
