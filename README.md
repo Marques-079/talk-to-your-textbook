@@ -47,11 +47,6 @@ A quick look at the core screens — minimal, readable, and ready for dark or li
 ---
 A figure-aware, citation-grounded Q&A system for STEM textbooks. Ask questions in natural language and get precise answers with clickable citations.
 
-![Status](https://img.shields.io/badge/status-MVP%20Complete-green)
-![Python](https://img.shields.io/badge/python-3.11-blue)
-![Next.js](https://img.shields.io/badge/next.js-14-black)
----
-
 ## ✨ What It Does
 
 Upload a PDF textbook → Ask questions → Get cited answers → Click citations to see the source.
