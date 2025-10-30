@@ -62,12 +62,12 @@ A: "Young's modulus is a measure of the stiffness of a material [p. 42].
 
 ## 📋 Features
 
-- ✅ **Authentication**: NextAuth + JWT
-- ✅ **Upload**: Direct-to-MinIO with presigned URLs
-- ✅ **Ingestion**: PyMuPDF → BGE-M3 embeddings → FAISS
-- ✅ **Q&A**: Vector search → GPT-4o mini → Streaming SSE
-- ✅ **Citations**: Click `[p. N]` to navigate PDF viewer
-- ✅ **Multi-user**: Per-user document isolation
+- **Authentication**: NextAuth + JWT
+- **Upload**: Direct-to-MinIO with presigned URLs
+- **Ingestion**: PyMuPDF → BGE-M3 embeddings → FAISS
+- **Q&A**: Vector search → GPT-4o mini → Streaming SSE
+- **Citations**: Click `[p. N]` to navigate PDF viewer
+- **Multi-user**: Per-user document isolation
 
 ---
 
